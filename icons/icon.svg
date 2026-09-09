@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <radialGradient id="velvetBg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#163466"/>
+      <stop offset="60%" stop-color="#0e2244"/>
+      <stop offset="100%" stop-color="#061020"/>
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#faeaaf"/>
+      <stop offset="50%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#9a7424"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Velvet Background -->
+  <rect width="512" height="512" rx="105" fill="url(#velvetBg)"/>
+
+  <!-- Ornate Outer Gold Border -->
+  <rect x="25" y="25" width="462" height="462" rx="85" stroke="url(#goldGrad)" stroke-width="8"/>
+  <rect x="35" y="35" width="442" height="442" rx="75" stroke="#d4af37" stroke-width="2" opacity="0.6"/>
+
+  <!-- Corner Brackets -->
+  <path d="M 80 145 L 80 80 L 145 80" stroke="url(#goldGrad)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 432 145 L 432 80 L 367 80" stroke="url(#goldGrad)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 80 367 L 80 432 L 145 432" stroke="url(#goldGrad)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 432 367 L 432 432 L 367 432" stroke="url(#goldGrad)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Center Circle Ring -->
+  <circle cx="256" cy="256" r="170" stroke="url(#goldGrad)" stroke-width="4" opacity="0.8"/>
+
+  <!-- Imperial Crown -->
+  <path d="M 226 155 L 210 115 L 236 135 L 256 100 L 276 135 L 302 115 L 286 155 Z" fill="url(#goldGrad)"/>
+  <rect x="220" y="157" width="72" height="14" rx="4" fill="url(#goldGrad)"/>
+  <circle cx="210" cy="115" r="5" fill="#ffffff"/>
+  <circle cx="256" cy="100" r="7" fill="#ffffff"/>
+  <circle cx="302" cy="115" r="5" fill="#ffffff"/>
+
+  <!-- Main SCAN Text -->
+  <text x="50%" y="280" dominant-baseline="middle" text-anchor="middle" font-family="'Playfair Display', Georgia, 'Times New Roman', serif" font-weight="900" font-size="96" fill="url(#goldGrad)" letter-spacing="4">SCAN</text>
+
+  <!-- Banner -->
+  <rect x="136" y="325" width="240" height="32" rx="10" fill="#0b1b36" stroke="url(#goldGrad)" stroke-width="3"/>
+  <text x="50%" y="343" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-weight="700" font-size="14" fill="#faeaaf" letter-spacing="2">L-IMPERIAL EDITION V4</text>
+</svg>
