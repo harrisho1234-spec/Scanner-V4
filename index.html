@@ -104,6 +104,7 @@
       const codeReaderRef = useRef(null);
       const cardRef = useRef(null);
       const [exporting, setExporting] = useState(false);
+      const [exportPreview, setExportPreview] = useState(null);
 
       const targetSheetUrl = "https://docs.google.com/spreadsheets/d/1FkScQir2QCWaTrzMuJ_pUcdziM1uDCQ_MrW33nLoxlI/edit?gid=657899447#gid=657899447";
 
@@ -416,13 +417,14 @@
         if (!selectedItem || !cardRef.current) return;
         setExporting(true);
 
-        // iOS Safari often ignores the download attribute. Open a tab directly
-        // from the tap so the finished image can be saved from the image viewer.
+        // On iPhone/iPad, use the native share sheet for the PNG instead of
+        // opening a separate browser tab. If file sharing is unavailable,
+        // show the image inside this app so it can be saved with a long press.
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        const imageWindow = isIOS ? window.open('', '_blank') : null;
         let exportWrapper = null;
         let objectUrl = null;
+        let keepObjectUrl = false;
 
         try {
           if (typeof html2canvas === 'undefined') {
@@ -571,31 +573,31 @@
           const safeName = String(selectedItem.name || 'card').replace(/[^a-z0-9_-]+/gi, '_');
           const fileName = `${safeCode}_${safeName}_combo.png`;
 
-          if (isIOS && imageWindow && !imageWindow.closed) {
-            // iPhone/iPad users can press and hold the full-size image, then
-            // choose Save to Photos or Save to Files in the browser image view.
-            const doc = imageWindow.document;
-            doc.open();
-            doc.close();
-            doc.title = 'Save Product Card Image';
-            doc.body.style.margin = '0';
-            doc.body.style.padding = '16px';
-            doc.body.style.background = '#f7f4ee';
-            doc.body.style.fontFamily = 'Arial, sans-serif';
-            doc.body.style.textAlign = 'center';
-            const message = doc.createElement('p');
-            message.textContent = 'Press and hold the image, then choose “Save to Photos” or “Save to Files”.';
-            message.style.cssText = 'font-size:14px;line-height:1.5;color:#554936;margin:4px auto 16px;max-width:600px;';
-            const preview = doc.createElement('img');
-            preview.src = objectUrl;
-            preview.alt = 'Exported product card';
-            preview.style.cssText = 'display:block;width:100%;height:auto;max-width:900px;margin:0 auto;background:#fff;';
-            doc.body.appendChild(message);
-            doc.body.appendChild(preview);
-            // Keep the Blob URL alive while the save page is open.
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
+          if (isIOS) {
+            const shareFile = new File([blob], fileName, { type: 'image/png' });
+            let sharedSuccessfully = false;
+
+            try {
+              if (navigator.share && navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+                await navigator.share({
+                  files: [shareFile],
+                  title: 'Product Card Image'
+                });
+                sharedSuccessfully = true;
+              }
+            } catch (shareError) {
+              // Closing the native share sheet is a normal user action.
+              if (shareError && shareError.name === 'AbortError') return;
+              console.warn('Native image sharing unavailable; showing in-app save preview.', shareError);
+            }
+
+            if (!sharedSuccessfully) {
+              // Keep the image inside the current PWA; users can press and hold
+              // the image and select Save to Photos without leaving the app.
+              setExportPreview({ url: objectUrl, fileName });
+              keepObjectUrl = true;
+            }
           } else {
-            if (imageWindow && !imageWindow.closed) imageWindow.close();
             const link = document.createElement('a');
             link.download = fileName;
             link.href = objectUrl;
@@ -604,13 +606,14 @@
             link.click();
             link.remove();
             setTimeout(() => URL.revokeObjectURL(objectUrl), 60 * 1000);
+            objectUrl = null;
           }
         } catch (err) {
           console.error('Card image export failed:', err);
-          if (imageWindow && !imageWindow.closed) imageWindow.close();
           alert(err && err.message ? `Export failed: ${err.message}` : 'Export failed. Please try again.');
         } finally {
           if (exportWrapper && exportWrapper.parentNode) exportWrapper.parentNode.removeChild(exportWrapper);
+          if (objectUrl && !keepObjectUrl) URL.revokeObjectURL(objectUrl);
           setExporting(false);
         }
       };
@@ -845,6 +848,33 @@
           }`}>
             <p>&copy; 2026 Scanner V4</p>
           </footer>
+
+          {exportPreview && (
+            <div className="fixed inset-0 z-[100] bg-black/80 p-3 flex items-center justify-center">
+              <div className="bg-[#fbf9f4] rounded-2xl w-full max-w-3xl max-h-full flex flex-col overflow-hidden shadow-2xl">
+                <div className="p-3 flex items-center justify-between gap-3 border-b border-[#e8e2d5]">
+                  <p className="text-sm font-semibold text-[#554936]">Press and hold the image, then choose “Save to Photos”.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      URL.revokeObjectURL(exportPreview.url);
+                      setExportPreview(null);
+                    }}
+                    className="shrink-0 px-4 py-2 rounded-lg bg-[#c49a45] text-white text-sm font-bold"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="overflow-auto p-2">
+                  <img
+                    src={exportPreview.url}
+                    alt="Exported product card"
+                    className="block w-full h-auto mx-auto bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       );
