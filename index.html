@@ -413,30 +413,204 @@
       };
 
       const handleExportImage = async () => {
-        if (!selectedItem) return;
+        if (!selectedItem || !cardRef.current) return;
         setExporting(true);
+
+        // iOS Safari often ignores the download attribute. Open a tab directly
+        // from the tap so the finished image can be saved from the image viewer.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const imageWindow = isIOS ? window.open('', '_blank') : null;
+        let exportWrapper = null;
+        let objectUrl = null;
 
         try {
           if (typeof html2canvas === 'undefined') {
-            throw new Error("Loading renderer...");
+            throw new Error("The image renderer is still loading. Please try again.");
           }
 
-          const canvas = await html2canvas(cardRef.current, {
-            useCORS: true, 
-            allowTaint: true,
-            backgroundColor: "#ffffff",
-            scale: 2
+          // Render a dedicated, fixed-width copy instead of the responsive card.
+          // This prevents phone-sized layouts from being flattened or clipped.
+          const exportCard = cardRef.current.cloneNode(true);
+          exportCard.style.width = '900px';
+          exportCard.style.height = 'auto';
+          exportCard.style.minHeight = '0';
+          exportCard.style.maxHeight = 'none';
+          exportCard.style.flex = 'none';
+          exportCard.style.overflow = 'visible';
+          exportCard.style.boxSizing = 'border-box';
+          exportCard.style.transition = 'none';
+          exportCard.style.transform = 'none';
+
+          const exportChildren = Array.from(exportCard.children);
+          if (exportChildren[0]) {
+            // Keep the product image at a stable size and preserve object-fit.
+            exportChildren[0].style.flex = '0 0 560px';
+            exportChildren[0].style.height = '560px';
+            exportChildren[0].style.minHeight = '560px';
+            exportChildren[0].style.maxHeight = 'none';
+            exportChildren[0].style.overflow = 'hidden';
+            exportChildren[0].style.boxSizing = 'border-box';
+          }
+          if (exportChildren[1]) {
+            // Let the information area grow naturally so letters and details
+            // are not clipped at the bottom of the exported image.
+            exportChildren[1].style.flex = 'none';
+            exportChildren[1].style.height = 'auto';
+            exportChildren[1].style.minHeight = '0';
+            exportChildren[1].style.maxHeight = 'none';
+            exportChildren[1].style.overflow = 'visible';
+            exportChildren[1].style.padding = '40px';
+            exportChildren[1].style.boxSizing = 'border-box';
+          }
+
+          exportCard.querySelectorAll('.line-clamp-1, .line-clamp-2').forEach(el => {
+            el.classList.remove('line-clamp-1', 'line-clamp-2');
+            el.style.display = 'block';
+            el.style.overflow = 'visible';
+            el.style.maxHeight = 'none';
+            el.style.webkitLineClamp = 'unset';
+            el.style.webkitBoxOrient = 'initial';
+            el.style.whiteSpace = 'normal';
+            el.style.overflowWrap = 'anywhere';
           });
 
-          const image = canvas.toDataURL("image/png");
-          const link = document.createElement("a");
-          link.download = `${selectedItem.code}_${selectedItem.name.replace(/\s+/g, '_')}_combo.png`;
-          link.href = image;
-          link.click();
+          exportWrapper = document.createElement('div');
+          exportWrapper.setAttribute('data-card-export-wrapper', 'true');
+          exportWrapper.style.position = 'fixed';
+          exportWrapper.style.left = '0';
+          exportWrapper.style.top = '0';
+          exportWrapper.style.width = '900px';
+          exportWrapper.style.height = 'auto';
+          exportWrapper.style.overflow = 'visible';
+          exportWrapper.style.opacity = '0';
+          exportWrapper.style.pointerEvents = 'none';
+          exportWrapper.style.zIndex = '2147483647';
+          exportWrapper.style.background = '#ffffff';
+          exportWrapper.appendChild(exportCard);
+          document.body.appendChild(exportWrapper);
+
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+          }
+
+          // Wait for all cloned images to either load or fail before capture.
+          const clonedImages = Array.from(exportCard.querySelectorAll('img'));
+          await Promise.all(clonedImages.map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(resolve => {
+              const done = () => resolve();
+              img.addEventListener('load', done, { once: true });
+              img.addEventListener('error', done, { once: true });
+              setTimeout(done, 12000);
+            });
+          }));
+
+          // html2canvas can stretch images that use width:100%, height:100%
+          // and object-fit:contain. Give the exported product image explicit
+          // dimensions calculated from its intrinsic aspect ratio instead.
+          const productStage = exportCard.children[0];
+          const productImage = productStage && productStage.querySelector('img');
+          if (productImage && productImage.naturalWidth > 0 && productImage.naturalHeight > 0) {
+            const stageStyle = window.getComputedStyle(productStage);
+            const availableWidth = Math.max(1, productStage.clientWidth -
+              parseFloat(stageStyle.paddingLeft || 0) - parseFloat(stageStyle.paddingRight || 0));
+            const availableHeight = Math.max(1, productStage.clientHeight -
+              parseFloat(stageStyle.paddingTop || 0) - parseFloat(stageStyle.paddingBottom || 0));
+            const imageRatio = productImage.naturalWidth / productImage.naturalHeight;
+            const boxRatio = availableWidth / availableHeight;
+            let imageWidth;
+            let imageHeight;
+
+            if (imageRatio > boxRatio) {
+              imageWidth = availableWidth;
+              imageHeight = imageWidth / imageRatio;
+            } else {
+              imageHeight = availableHeight;
+              imageWidth = imageHeight * imageRatio;
+            }
+
+            productImage.style.setProperty('width', `${imageWidth}px`, 'important');
+            productImage.style.setProperty('height', `${imageHeight}px`, 'important');
+            productImage.style.setProperty('max-width', 'none', 'important');
+            productImage.style.setProperty('max-height', 'none', 'important');
+            productImage.style.setProperty('object-fit', 'fill', 'important');
+            productImage.style.setProperty('display', 'block', 'important');
+            productImage.style.setProperty('flex', '0 0 auto', 'important');
+          }
+
+          const exportHeight = Math.ceil(exportCard.getBoundingClientRect().height);
+          if (!exportHeight || exportHeight < 100) {
+            throw new Error("Could not measure the product card for export.");
+          }
+
+          const canvas = await html2canvas(exportCard, {
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#ffffff',
+            scale: 2,
+            width: 900,
+            height: exportHeight,
+            windowWidth: 1000,
+            windowHeight: Math.max(window.innerHeight, exportHeight),
+            scrollX: 0,
+            scrollY: 0,
+            imageTimeout: 15000,
+            onclone: clonedDocument => {
+              const wrapper = clonedDocument.querySelector('[data-card-export-wrapper="true"]');
+              if (wrapper) wrapper.style.opacity = '1';
+            }
+          });
+
+          const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob(result => result ? resolve(result) : reject(new Error('Could not create the PNG image.')), 'image/png');
+          });
+          objectUrl = URL.createObjectURL(blob);
+
+          const safeCode = String(selectedItem.code || 'product').replace(/[^a-z0-9_-]+/gi, '_');
+          const safeName = String(selectedItem.name || 'card').replace(/[^a-z0-9_-]+/gi, '_');
+          const fileName = `${safeCode}_${safeName}_combo.png`;
+
+          if (isIOS && imageWindow && !imageWindow.closed) {
+            // iPhone/iPad users can press and hold the full-size image, then
+            // choose Save to Photos or Save to Files in the browser image view.
+            const doc = imageWindow.document;
+            doc.open();
+            doc.close();
+            doc.title = 'Save Product Card Image';
+            doc.body.style.margin = '0';
+            doc.body.style.padding = '16px';
+            doc.body.style.background = '#f7f4ee';
+            doc.body.style.fontFamily = 'Arial, sans-serif';
+            doc.body.style.textAlign = 'center';
+            const message = doc.createElement('p');
+            message.textContent = 'Press and hold the image, then choose “Save to Photos” or “Save to Files”.';
+            message.style.cssText = 'font-size:14px;line-height:1.5;color:#554936;margin:4px auto 16px;max-width:600px;';
+            const preview = doc.createElement('img');
+            preview.src = objectUrl;
+            preview.alt = 'Exported product card';
+            preview.style.cssText = 'display:block;width:100%;height:auto;max-width:900px;margin:0 auto;background:#fff;';
+            doc.body.appendChild(message);
+            doc.body.appendChild(preview);
+            // Keep the Blob URL alive while the save page is open.
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
+          } else {
+            if (imageWindow && !imageWindow.closed) imageWindow.close();
+            const link = document.createElement('a');
+            link.download = fileName;
+            link.href = objectUrl;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 60 * 1000);
+          }
         } catch (err) {
-          console.error(err);
-          alert("Notice: Export complete.");
+          console.error('Card image export failed:', err);
+          if (imageWindow && !imageWindow.closed) imageWindow.close();
+          alert(err && err.message ? `Export failed: ${err.message}` : 'Export failed. Please try again.');
         } finally {
+          if (exportWrapper && exportWrapper.parentNode) exportWrapper.parentNode.removeChild(exportWrapper);
           setExporting(false);
         }
       };
